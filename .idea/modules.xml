@@ -2,7 +2,8 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/CabUnity.iml" filepath="$PROJECT_DIR$/.idea/CabUnity.iml" />
+      <module fileurl="file://$PROJECT_DIR$/CabUnity/CabUnity.iml" filepath="$PROJECT_DIR$/CabUnity/CabUnity.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/CabUnity-springBoot.iml" filepath="$PROJECT_DIR$/.idea/CabUnity-springBoot.iml" />
     </modules>
   </component>
 </project>
