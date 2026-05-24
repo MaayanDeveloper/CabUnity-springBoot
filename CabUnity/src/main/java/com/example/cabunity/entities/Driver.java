@@ -21,18 +21,21 @@ public class Driver{
     @OneToOne
     @JoinColumn(name = "user_id")
     private User user;
-
-    // דגם הרכב
     private String carModel;
-
     // מספר רכב
     private String licensePlate;
-
+    private int maxSeats;
     // מיקום נוכחי
     private double currentLat;
-
     private double currentLng;
-
     // האם הנהג זמין לנסיעות
     private boolean isAvailable;
+    @Enumerated(EnumType.STRING)
+    private ApprovalStatus approvalStatus;
+
+    public enum ApprovalStatus {
+        PENDING, //המתנה
+        APPROVED, //מאושר
+        REJECTED // נדחה
+    }
 }
