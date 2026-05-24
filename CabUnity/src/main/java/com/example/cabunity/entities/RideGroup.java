@@ -35,4 +35,6 @@ public class RideGroup {
     // קשר של אחד לרבים עם טבלת הנסיעות (Rides)
     @OneToMany(mappedBy = "rideGroup", cascade = CascadeType.ALL)
     private List<Ride> rides;
+
+    private int availableSeats;
 }

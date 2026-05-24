@@ -9,31 +9,25 @@ import lombok.*;
 @Builder
 @ToString
 @EqualsAndHashCode
-
-@Entity
+@Entity // השארנו רק את ה-Entity למעלה!
 public class Ride {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // כתובת מוצא
+    // התיקון: הוספת הנוסע עם הקישור הנכון בתוך המחלקה!
+    @ManyToOne
+    @JoinColumn(name = "passenger_id")
+    private User passenger;
+
     private String originAddress;
-
-    // כתובת יעד
     private String destinationAddress;
-
-    // קואורדינטות מוצא
     private double originLat;
-
     private double originLng;
-
-    // קואורדינטות יעד
     private double destLat;
-
     private double destLng;
 
-    // סטטוס נסיעה
     @Enumerated(EnumType.STRING)
     private RideStatus status;
 
@@ -44,10 +38,8 @@ public class Ride {
         CANCELLED
     }
 
-    // מחיר סופי
     private double price;
 
-    // Ride Sharing
     @ManyToOne
     @JoinColumn(name = "ride_group_id")
     private RideGroup rideGroup;
