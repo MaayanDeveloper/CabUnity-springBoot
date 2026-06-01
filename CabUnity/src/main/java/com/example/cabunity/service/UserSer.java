@@ -38,7 +38,7 @@ public class UserSer {
     @Transactional
     public User updateUser(Long id, User userDetails) {
         User user = getUserById(id);
-        user.setUsername(userDetails.getUsername());
+        user.setName(userDetails.getName());
         user.setEmail(userDetails.getEmail());
         user.setRole(userDetails.getRole());
         user.setRating(userDetails.getRating());
