@@ -5,6 +5,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 import java.util.List;
 
+
 @NoArgsConstructor
 @AllArgsConstructor
 @Data
@@ -18,23 +19,22 @@ public class RideGroup {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    // מקשרת נהג אחד (מטבלת Drivers)
-    @Column(name = "driver_id")
-    private Long driverId;
-    // הערה: אם יש לך מחלקת Driver מסודרת, מומלץ להשתמש ב-ManyToOne במקום ב-Long
-
-    // זמן יציאה
+    @ManyToOne
+    @JoinColumn(name = "driver_id")
+    private Driver driver;
     @Column(name = "start_time")
     private LocalDateTime startTime;
-
-    // תוצר האלגוריתם - סדר איסופים והורדות (נשמר כ-JSON בבסיס הנתונים)
     @Column(name = "optimized_route", columnDefinition = "TEXT")
     private String optimizedRoute;
-
-    // קשר של אחד לרבים עם טבלת הנסיעות (Rides)
     @OneToMany(mappedBy = "rideGroup", cascade = CascadeType.ALL)
     private List<Ride> rides;
-
     private int availableSeats;
+    @Enumerated(EnumType.STRING)
+    private RideGroupStatus status;
+
+    public enum RideGroupStatus {
+        PENDING,     //מוזמן, עוד לא יצא לדרך
+        ACTIVE,      // בנסיעה
+        COMPLETED    // הסתיימה
+    }
 }
