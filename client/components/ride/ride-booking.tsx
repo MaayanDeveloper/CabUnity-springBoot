@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { MapPin, Navigation, Clock, Users, CreditCard, Star, Phone, MessageCircle, X, Plus, Minus, Trash2, Search, Car, Sparkles, AlertCircle } from "lucide-react"
+import apiClient from "@/lib/api" // משתמשים בשםApiClient כדי למנוע התנגשויות מילים
 
 const LeafletMap = dynamic(() => import("@/components/map/leaflet-map"), {
   ssr: false,
@@ -160,42 +161,69 @@ export default function RideBooking() {
     setBookingError(null)
     setStatus("searching")
 
+    const savedUserStr = localStorage.getItem("user")
+    if (!savedUserStr) {
+      setBookingError("משתמש לא מחובר, נא לבצע התחברות מחדש.")
+      setStatus("idle")
+      return
+    }
+    const currentUser = JSON.parse(savedUserStr)
     const pickup = validLocations[0]
+    const destination = validLocations[validLocations.length - 1]
 
     try {
-      const response = await fetch("/api/find-driver", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pickup: { lat: pickup.lat, lng: pickup.lng },
-          passengers,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        setBookingError(data.error || "לא נמצא נהג זמין")
-        setStatus("idle")
-        return
+      const ridePayload = {
+        originAddress: pickup.address || "נקודת מוצא",
+        destinationAddress: destination.address || "נקודת יעד",
+        originLat: pickup.lat,
+        originLng: pickup.lng,
+        destLat: destination.lat,
+        destLng: destination.lng,
+        requestedSeats: passengers,
+        isShared: selectedRideType === "shared"
       }
 
-      const foundDriver: Driver = data.driver
-      setDriver(foundDriver)
+      // קריאות מול ה-Spring Boot המאובטח באמצעות apiClient החדש
+      const createResponse = await apiClient.post(`/passenger/${currentUser.id}/rides`, ridePayload)
+      const generatedRide = createResponse.data
 
-      // ממקמים את הנהג על המפה לפי המרחק שחושב בשרת (כיוון אקראי סביב נקודת האיסוף)
-      const angle = Math.random() * Math.PI * 2
-      const offset = foundDriver.distanceKm / 111 // המרה גסה מק"מ למעלות
-      setDriverLocation({
-        lat: pickup.lat + Math.cos(angle) * offset,
-        lng: pickup.lng + Math.sin(angle) * offset,
-      })
+      await apiClient.post(`/passenger/rides/${generatedRide.id}/match`)
 
-      setStatus("found")
-      setTimeout(() => setStatus("arriving"), 2500)
-    } catch (error) {
-      console.log("[v0] Error booking ride:", error)
-      setBookingError("אירעה שגיאה בחיפוש נהג. נסו שוב.")
+      const detailsResponse = await apiClient.get(`/passenger/rides/${generatedRide.id}`)
+      const updatedRide = detailsResponse.data
+
+      if (updatedRide && updatedRide.rideGroup && updatedRide.rideGroup.driver) {
+        const dbDriver = updatedRide.rideGroup.driver
+        
+        setDriver({
+          id: dbDriver.id.toString(),
+          name: dbDriver.user?.name || "נהג קאב-יוניטי",
+          rating: dbDriver.user?.rating || 5.0,
+          trips: 42,
+          carModel: dbDriver.carModel,
+          carColor: "לבן",
+          plateNumber: dbDriver.licensePlate,
+          photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=256&h=256",
+          seats: dbDriver.maxSeats,
+          distanceKm: parseFloat(dbDriver.distanceToPassenger?.toFixed(1)) || 1.2,
+          eta: Math.ceil(dbDriver.distanceToPassenger * 2) || 4
+        })
+
+        setDriverLocation({
+          lat: dbDriver.currentLat,
+          lng: dbDriver.currentLng
+        })
+
+        setStatus("found")
+        setTimeout(() => setStatus("arriving"), 2500)
+      } else {
+        setBookingError("הנסיעה נוצרה, אך לא נמצא נהג פנוי התואם למסלול שלך כרגע.")
+        setStatus("idle")
+      }
+
+    } catch (error: any) {
+      console.error("Error booking ride:", error)
+      setBookingError(error.response?.data?.message || "לא נמצאה קבוצת נסיעה שיתופית זמינה כרגע עם מספיק מקום פנוי.")
       setStatus("idle")
     }
   }
@@ -540,6 +568,9 @@ export default function RideBooking() {
               </div>
 
               <div className="space-y-2">
+                <div className="p-2 text-xs text-muted-foreground text-center bg-gray-50 rounded-lg">
+                  🚕 מסלול נסיעה פעיל מול שרת ה-Spring Boot
+                </div>
                 {validLocations.map((loc, i) => (
                   <div key={i} className="flex items-center gap-3 p-3 bg-muted rounded-xl">
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold ${
