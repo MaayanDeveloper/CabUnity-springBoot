@@ -29,9 +29,10 @@ public class Driver{
     private double currentLat;
     private double currentLng;
     // האם הנהג זמין לנסיעות
-    private boolean isAvailable;
+    private Boolean available;
     @Enumerated(EnumType.STRING)
     private ApprovalStatus approvalStatus;
+
 
     public enum ApprovalStatus {
         PENDING, //המתנה

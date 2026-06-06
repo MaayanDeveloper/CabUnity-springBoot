@@ -45,6 +45,7 @@ public class DriverSer {
             driver.setApprovalStatus(Driver.ApprovalStatus.APPROVED);
             User user = driver.getUser();
             user.setRole(User.Role.DRIVER);
+            userSer.save(user);
         } else {
             driver.setApprovalStatus(Driver.ApprovalStatus.REJECTED);
         }

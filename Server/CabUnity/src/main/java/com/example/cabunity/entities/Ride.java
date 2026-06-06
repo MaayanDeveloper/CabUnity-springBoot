@@ -1,5 +1,6 @@
     package com.example.cabunity.entities;
 
+    import com.fasterxml.jackson.annotation.JsonBackReference;
     import jakarta.persistence.*;
     import lombok.*;
 
@@ -40,5 +41,6 @@
 
         @ManyToOne
         @JoinColumn(name = "ride_group_id")
+        @JsonBackReference
         private RideGroup rideGroup;
     }

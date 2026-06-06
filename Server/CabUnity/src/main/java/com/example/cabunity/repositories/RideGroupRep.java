@@ -7,7 +7,10 @@ import java.util.List;
 @Repository
 public interface RideGroupRep extends JpaRepository<RideGroup, Long> {
 
-    // שליפת קבוצות לפי הסטטוס שלהן (למשל: תביא את כל הקבוצות שכרגע PENDING)
     List<RideGroup> findByStatus(RideGroup.RideGroupStatus status);
+    List<RideGroup> findByDriverIdAndStatusIn(
+            Long driverId,
+            List<RideGroup.RideGroupStatus> statuses
+    );
 }
 
