@@ -1,15 +1,18 @@
 package com.example.cabunity.controller;
 
+import com.example.cabunity.dto.CreateRideRequest;
 import com.example.cabunity.entities.Ride;
 import com.example.cabunity.entities.User;
 import com.example.cabunity.service.RideGroupSer;
 import com.example.cabunity.service.RideSer;
 import com.example.cabunity.service.UserSer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/passenger")
@@ -35,18 +38,35 @@ public class PassengerClr {
     }
     // 3. יצירת הזמנת נסיעה חדשה (בסטטוס PENDING)
     @PostMapping("/{passengerId}/rides")
-    public ResponseEntity<Ride> createRide(@RequestBody Ride ride, @PathVariable Long passengerId) {
-        System.out.println("ENTERED CREATE RIDE");
-        System.out.println(ride);
+    public ResponseEntity<Ride> createRide(
+            @RequestBody CreateRideRequest request,
+            @PathVariable Long passengerId) {
+        Ride ride = Ride.builder()
+                .originAddress(request.getOriginAddress())
+                .destinationAddress(request.getDestinationAddress())
+                .originLat(request.getOriginLat())
+                .originLng(request.getOriginLng())
+                .destLat(request.getDestLat())
+                .destLng(request.getDestLng())
+                .requestedSeats(request.getRequestedSeats())
+                .isShared(request.isShared())
+                .build();
         Ride createdRide = rideSer.createRide(ride, passengerId);
         return ResponseEntity.ok(createdRide);
     }
 
     // 4. הפעלת מנוע השידוך החכם! (האלגוריתם שכתבנו יחד)
     @PostMapping("/rides/{rideId}/match")
-    public ResponseEntity<String> matchRideToGroup(@PathVariable Long rideId) {
-        rideGroupSer.matchRideToBestGroup(rideId);
-        return ResponseEntity.ok("Passenger matched successfully to the best available driver!");
+    public ResponseEntity<Map<String, String>> matchRideToGroup(@PathVariable Long rideId) {
+        try {
+            rideGroupSer.matchRideToBestGroup(rideId);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Passenger matched successfully to the best available driver!"
+            ));
+        } catch (RuntimeException ex) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", ex.getMessage()));
+        }
     }
 
     // 5. צפייה בהיסטוריית הנסיעות של הנוסע הספציפי ("הנסיעות שלי" בריאקט)

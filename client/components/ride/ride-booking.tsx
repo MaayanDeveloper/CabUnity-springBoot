@@ -3,6 +3,14 @@
 import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { MapPin, Navigation, Clock, Users, CreditCard, Star, Phone, MessageCircle, X, Plus, Minus, Trash2, Search, Car, Sparkles, AlertCircle } from "lucide-react"
+import {
+  createRide,
+  matchRide,
+  getRideDetails,
+  cancelRide,
+  mapApiDriverToUi,
+  type UiDriver,
+} from "@/lib/api/passenger"
 
 const LeafletMap = dynamic(() => import("@/components/map/leaflet-map"), {
   ssr: false,
@@ -24,19 +32,7 @@ interface Location {
 
 type RideStatus = "idle" | "searching" | "found" | "arriving" | "in_ride" | "completed"
 
-interface Driver {
-  id: string
-  name: string
-  rating: number
-  trips: number
-  carModel: string
-  carColor: string
-  plateNumber: string
-  photo: string
-  seats: number
-  distanceKm: number
-  eta: number
-}
+type Driver = UiDriver
 
 const RIDE_TYPES = [
   { id: "shared", name: "משותפת", icon: Users, multiplier: 0.6, description: "חסכו עד 40%", color: "text-emerald-500" },
@@ -59,6 +55,7 @@ export default function RideBooking() {
   const [estimatedTime, setEstimatedTime] = useState<number | null>(null)
   const [searchInputs, setSearchInputs] = useState<string[]>(["", ""])
   const [bookingError, setBookingError] = useState<string | null>(null)
+  const [currentRideId, setCurrentRideId] = useState<number | null>(null)
 
   const validLocations = locations.filter(l => l.lat && l.lng)
 
@@ -157,53 +154,92 @@ export default function RideBooking() {
   const handleBookRide = async () => {
     if (validLocations.length < 2) return
 
+    const passengerId = Number(process.env.NEXT_PUBLIC_DEMO_PASSENGER_ID)
+    if (!passengerId) {
+      setBookingError("חסר NEXT_PUBLIC_DEMO_PASSENGER_ID ב-.env.local")
+      return
+    }
+
     setBookingError(null)
     setStatus("searching")
 
     const pickup = validLocations[0]
+    const destination = validLocations[validLocations.length - 1]
+    const isShared = selectedRideType === "shared"
+    let createdRideId: number | null = null
 
     try {
-      const response = await fetch("/api/find-driver", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pickup: { lat: pickup.lat, lng: pickup.lng },
-          passengers,
-        }),
+      const createdRide = await createRide(passengerId, {
+        originAddress: pickup.address ?? "נקודת איסוף",
+        destinationAddress: destination.address ?? "יעד",
+        originLat: pickup.lat,
+        originLng: pickup.lng,
+        destLat: destination.lat,
+        destLng: destination.lng,
+        requestedSeats: passengers,
+        isShared,
       })
 
-      const data = await response.json()
+      createdRideId = createdRide.id
+      setCurrentRideId(createdRide.id)
 
-      if (!response.ok) {
-        setBookingError(data.error || "לא נמצא נהג זמין")
+      await matchRide(createdRide.id)
+
+      const rideDetails = await getRideDetails(createdRide.id)
+
+      const apiDriver = rideDetails.rideGroup?.driver
+      if (!apiDriver) {
+        setBookingError(
+          "הנסיעה שודכה אבל פרטי הנהג לא הגיעו מהשרת. בדקי את @JsonBackReference ב-Ride.java"
+        )
         setStatus("idle")
         return
       }
 
-      const foundDriver: Driver = data.driver
+      const foundDriver = mapApiDriverToUi(apiDriver, pickup.lat, pickup.lng)
       setDriver(foundDriver)
 
-      // ממקמים את הנהג על המפה לפי המרחק שחושב בשרת (כיוון אקראי סביב נקודת האיסוף)
-      const angle = Math.random() * Math.PI * 2
-      const offset = foundDriver.distanceKm / 111 // המרה גסה מק"מ למעלות
       setDriverLocation({
-        lat: pickup.lat + Math.cos(angle) * offset,
-        lng: pickup.lng + Math.sin(angle) * offset,
+        lat: apiDriver.currentLat,
+        lng: apiDriver.currentLng,
       })
+
+      if (rideDetails.price) {
+        setEstimatedPrice(Math.round(rideDetails.price))
+      }
 
       setStatus("found")
       setTimeout(() => setStatus("arriving"), 2500)
     } catch (error) {
-      console.log("[v0] Error booking ride:", error)
-      setBookingError("אירעה שגיאה בחיפוש נהג. נסו שוב.")
+      console.error("Error booking ride:", error)
+      if (createdRideId) {
+        try {
+          await cancelRide(createdRideId)
+        } catch {
+          // ignore cancel errors
+        }
+      }
+      const message =
+        error instanceof Error ? error.message : "אירעה שגיאה בחיפוש נהג"
+      setBookingError(message)
       setStatus("idle")
+      setCurrentRideId(null)
     }
   }
 
-  const handleCancelRide = () => {
+  const handleCancelRide = async () => {
+    if (currentRideId) {
+      try {
+        await cancelRide(currentRideId)
+      } catch (error) {
+        console.error("Error cancelling ride:", error)
+      }
+    }
     setStatus("idle")
     setDriver(null)
     setDriverLocation(null)
+    setCurrentRideId(null)
+    setBookingError(null)
   }
 
   const searchAddress = async (query: string, index: number) => {
@@ -232,6 +268,7 @@ export default function RideBooking() {
     setStatus("idle")
     setDriver(null)
     setDriverLocation(null)
+    setCurrentRideId(null)
     setBookingError(null)
     setLocations([
       { lat: 0, lng: 0, address: "" },

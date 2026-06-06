@@ -47,7 +47,7 @@ public class DriverClr {
     }
 
     // 4. עדכון מיקום הנהג בזמן אמת ושמירת לוג היסטורי
-    @PostMapping("/api/driver/{id}/location")
+    @PostMapping("/{id}/location")
     public ResponseEntity<String> updateLocation(
             @PathVariable Long id,
             @RequestBody Map<String, Double> body) {

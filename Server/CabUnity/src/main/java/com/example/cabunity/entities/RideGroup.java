@@ -1,6 +1,5 @@
 package com.example.cabunity.entities;
 
-import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
@@ -30,7 +29,7 @@ public class RideGroup {
     @Column(name = "optimized_route", columnDefinition = "TEXT")
     private String optimizedRoute;
     @OneToMany(mappedBy = "rideGroup", cascade = CascadeType.ALL)
-    @JsonManagedReference
+    @JsonIgnore
     private List<Ride> rides;
     private int availableSeats;
     @Enumerated(EnumType.STRING)
