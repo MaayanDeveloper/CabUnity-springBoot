@@ -1,6 +1,8 @@
 package com.example.cabunity.service;
 
+import com.example.cabunity.entities.Driver;
 import com.example.cabunity.entities.User;
+import com.example.cabunity.repositories.DriverRep;
 import com.example.cabunity.repositories.UserRep; // ייבוא שמתאים לשם החדש
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -13,6 +15,7 @@ import java.util.List;
 public class UserSer {
 
     private final UserRep userRep; // שימוש בשם המדויק שהגדרת
+    private final DriverRep driverRep;
 
     public List<User> getAllUsers() {
         return userRep.findAll();
@@ -43,6 +46,7 @@ public class UserSer {
         user.setRole(userDetails.getRole());
         user.setRating(userDetails.getRating());
         user.setProfileImage(userDetails.getProfileImage());
+        user.setIdNumber(userDetails.getIdNumber());
         return userRep.save(user);
     }
 
@@ -53,10 +57,18 @@ public class UserSer {
         userRep.save(user);
     }
 
+    @Transactional
     public void deleteUser(Long id) {
-        if (!userRep.existsById(id)) {
-            throw new RuntimeException("Cannot delete: User not found");
+        User user = userRep.findById(id)
+                .orElseThrow(() -> new RuntimeException("Cannot delete: User not found"));
+        Driver driver = driverRep.findByUser(user);
+        if (driver != null) {
+            driverRep.delete(driver);
         }
-        userRep.deleteById(id);
+        userRep.delete(user);
+    }
+    @Transactional
+    public User save(User user) {
+        return userRep.save(user);
     }
 }

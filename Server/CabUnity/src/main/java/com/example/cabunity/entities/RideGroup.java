@@ -1,10 +1,11 @@
 package com.example.cabunity.entities;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
 import java.util.List;
-
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @NoArgsConstructor
 @AllArgsConstructor
@@ -24,9 +25,12 @@ public class RideGroup {
     private Driver driver;
     @Column(name = "start_time")
     private LocalDateTime startTime;
+    @Column(name = "end_time")
+    private LocalDateTime endTime;
     @Column(name = "optimized_route", columnDefinition = "TEXT")
     private String optimizedRoute;
     @OneToMany(mappedBy = "rideGroup", cascade = CascadeType.ALL)
+    @JsonManagedReference
     private List<Ride> rides;
     private int availableSeats;
     @Enumerated(EnumType.STRING)

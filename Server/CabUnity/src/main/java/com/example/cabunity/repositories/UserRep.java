@@ -13,7 +13,7 @@ import java.util.Optional;
 public interface UserRep extends JpaRepository<User, Long> {
 
     // חיפוש לפי שם משתמש מדויק
-    Optional<User> findByUsername(String username);
+    Optional<User> findByName(String name);
 
     // בדיקה אם אימייל קיים (לצורך הרשמה)
     boolean existsByEmail(String email);
@@ -22,7 +22,7 @@ public interface UserRep extends JpaRepository<User, Long> {
     List<User> findByRole(User.Role role);
 
     // חיפוש חופשי: מוצא משתמשים שהשם שלהם מכיל את הטקסט (לא חייב להיות מדויק)
-    List<User> findByUsernameContainingIgnoreCase(String username);
+    List<User> findByNameContainingIgnoreCase(String name);
 
     // שאילתה מותאמת אישית: מוצאת משתמשים עם דירוג גבוה מציון מסוים
     @Query("SELECT u FROM User u WHERE u.rating >= :minRating")

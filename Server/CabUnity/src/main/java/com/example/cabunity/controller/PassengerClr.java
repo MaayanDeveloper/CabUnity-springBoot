@@ -33,10 +33,11 @@ public class PassengerClr {
         User updated = userSer.updateUser(id, userDetails);
         return ResponseEntity.ok(updated);
     }
-
     // 3. יצירת הזמנת נסיעה חדשה (בסטטוס PENDING)
     @PostMapping("/{passengerId}/rides")
     public ResponseEntity<Ride> createRide(@RequestBody Ride ride, @PathVariable Long passengerId) {
+        System.out.println("ENTERED CREATE RIDE");
+        System.out.println(ride);
         Ride createdRide = rideSer.createRide(ride, passengerId);
         return ResponseEntity.ok(createdRide);
     }

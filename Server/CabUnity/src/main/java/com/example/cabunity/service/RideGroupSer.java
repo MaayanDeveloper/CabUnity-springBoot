@@ -58,32 +58,50 @@ public class RideGroupSer {
     @Transactional
     public RideGroup createRideGroup(Long driverId) {
         Driver driver = driverSer.getDriverById(driverId);
-
+        // הנהג חייב להיות מאושר
+        if (driver.getApprovalStatus() != Driver.ApprovalStatus.APPROVED) {
+            throw new RuntimeException("Driver is not approved");
+        }
+        // אסור לפתוח משמרת נוספת אם כבר קיימת משמרת פעילה
+        List<RideGroup> existingGroups =
+                rideGroupRepository.findByDriverIdAndStatusIn(
+                        driverId,
+                        List.of(
+                                RideGroup.RideGroupStatus.PENDING,
+                                RideGroup.RideGroupStatus.ACTIVE
+                        )
+                );
+        if (!existingGroups.isEmpty()) {
+            throw new RuntimeException("Driver already has an active shift");
+        }
         RideGroup group = new RideGroup();
         group.setDriver(driver);
         group.setStartTime(LocalDateTime.now());
         group.setStatus(RideGroup.RideGroupStatus.PENDING);
-
         int seatsForPassengers = driver.getMaxSeats() - 1;
         group.setAvailableSeats(seatsForPassengers);
-
+        driver.setAvailable(true);
         return rideGroupRepository.save(group);
     }
-
-    //מעדכנת את סטטוס הנסיעה
+    //מעדכנת את סטטוס המשמרת/קבוצה
     @Transactional
-    public RideGroup updateGroupStatus(Long groupId, RideGroup.RideGroupStatus newStatus) {
+    public RideGroup updateGroupStatus(
+            Long groupId,
+            RideGroup.RideGroupStatus status) {
         RideGroup group = rideGroupRepository.findById(groupId)
-                .orElseThrow(() -> new RuntimeException("RideGroup not found"));
-        group.setStatus(newStatus);
+                .orElseThrow(() ->
+                        new RuntimeException("RideGroup not found"));
+        group.setStatus(status);
         return rideGroupRepository.save(group);
     }
 
     //מביאה את כל המוניות שיש בהן לפחות מקום אחד פנוי
     public List<RideGroup> getAvailableGroupsForAlgorithm() {
         return rideGroupRepository.findAll().stream()
-                .filter(g -> (g.getStatus() == RideGroup.RideGroupStatus.PENDING || g.getStatus() == RideGroup.RideGroupStatus.ACTIVE))
+                .filter(g -> (g.getStatus() == RideGroup.RideGroupStatus.PENDING ||
+                        g.getStatus() == RideGroup.RideGroupStatus.ACTIVE))
                 .filter(g -> g.getAvailableSeats() > 0)
+                .filter(g -> Boolean.TRUE.equals(g.getDriver().getAvailable()))
                 .toList();
     }
 
@@ -96,22 +114,38 @@ public class RideGroupSer {
         RideGroup bestGroup = null;
         double minEtaMinutes = Double.MAX_VALUE;
         for (RideGroup group : availableGroups) {
+            List<Ride> rides =
+                    group.getRides() == null
+                            ? List.of()
+                            : group.getRides();
             if (group.getAvailableSeats() < seatsNeeded) {
                 continue;
             }
-            if (!newRide.isShared() && !group.getRides().isEmpty()) continue;
-            if (!group.getRides().isEmpty() && !group.getRides().get(0).isShared()) continue;
-            if (!group.getRides().isEmpty()) {
-                Ride firstPassenger = group.getRides().get(0);
+            // נוסע רוצה נסיעה פרטית
+            if (!newRide.isShared() && !rides.isEmpty()) {
+                continue;
+            }
+            // כבר יש ברכב נוסע שביקש נסיעה פרטית
+            if (!rides.isEmpty() && !rides.get(0).isShared()) {
+                continue;
+            }
+            if (!rides.isEmpty()) {
+                Ride firstPassenger = rides.get(0);
                 double destDiff = getDriveMinutes(
-                        firstPassenger.getDestLat(), firstPassenger.getDestLng(),
-                        newRide.getDestLat(), newRide.getDestLng()
+                        firstPassenger.getDestLat(),
+                        firstPassenger.getDestLng(),
+                        newRide.getDestLat(),
+                        newRide.getDestLng()
                 );
-                if (destDiff > MaxDestMinute) continue;
+                if (destDiff > MaxDestMinute) {
+                    continue;
+                }
             }
             double currentEta = getDriveMinutes(
-                    group.getDriver().getCurrentLat(), group.getDriver().getCurrentLng(),
-                    newRide.getOriginLat(), newRide.getOriginLng()
+                    group.getDriver().getCurrentLat(),
+                    group.getDriver().getCurrentLng(),
+                    newRide.getOriginLat(),
+                    newRide.getOriginLng()
             );
             if (currentEta < minEtaMinutes) {
                 minEtaMinutes = currentEta;
@@ -120,17 +154,34 @@ public class RideGroupSer {
         }
         if (bestGroup != null) {
             newRide.setRideGroup(bestGroup);
+            bestGroup.setStatus(RideGroup.RideGroupStatus.ACTIVE);
             rideRepository.save(newRide);
             if (!newRide.isShared()) {
                 bestGroup.setAvailableSeats(0);
             } else {
-                int remainingSeats = bestGroup.getAvailableSeats() - seatsNeeded;
+                int remainingSeats =
+                        bestGroup.getAvailableSeats() - seatsNeeded;
                 bestGroup.setAvailableSeats(remainingSeats);
             }
             rideGroupRepository.save(bestGroup);
-            System.out.println("Matched successfully! Remaining seats in taxi: " + bestGroup.getAvailableSeats());
+            System.out.println(
+                    "Matched successfully! Remaining seats in taxi: "
+                            + bestGroup.getAvailableSeats()
+            );
         } else {
-            throw new RuntimeException("No available drivers with enough seats for your request.");
+            throw new RuntimeException(
+                    "No available drivers with enough seats for your request."
+            );
         }
+    }
+    @Transactional
+    public RideGroup endShift(Long groupId) {
+        RideGroup group = rideGroupRepository.findById(groupId)
+                .orElseThrow(() -> new RuntimeException("RideGroup not found"));
+        Driver driver = group.getDriver();
+        driver.setAvailable(false);
+        group.setEndTime(LocalDateTime.now());
+        group.setStatus(RideGroup.RideGroupStatus.COMPLETED);
+        return rideGroupRepository.save(group);
     }
     }

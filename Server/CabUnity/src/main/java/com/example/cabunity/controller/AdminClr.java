@@ -50,18 +50,19 @@ public class AdminClr {
         return ResponseEntity.ok(updatedDriver);
     }
 
-    // 5. שליפת כל הנסיעות שמחכות כרגע לשידוך במערכת
-    @GetMapping("/rides/pending")
-    public ResponseEntity<List<Ride>> getPendingRides() {
-        return ResponseEntity.ok(rideSer.getPendingRides());
-    }
+    //PUT http://localhost:8080/api/admin/drivers/6/approve?isApproved=true
+//    // 5. שליפת כל הנסיעות שמחכות כרגע לשידוך במערכת
+//    @GetMapping("/rides/pending")
+//    public ResponseEntity<List<Ride>> getPendingRides() {
+//        return ResponseEntity.ok(rideSer.getPendingRides());
+//    }
 
     // 6. עדכון דירוג של משתמש באופן ידני על ידי המנהל (למשל במקרה של תלונה)
-    @PutMapping("/users/{userId}/rating")
-    public ResponseEntity<String> updateUserRating(@PathVariable Long userId, @RequestParam double rating) {
-        userSer.updateUserRating(userId, rating);
-        return ResponseEntity.ok("User rating updated by admin.");
-    }
+//    @PutMapping("/users/{userId}/rating")
+//    public ResponseEntity<String> updateUserRating(@PathVariable Long userId, @RequestParam double rating) {
+//        userSer.updateUserRating(userId, rating);
+//        return ResponseEntity.ok("User rating updated by admin.");
+//    }
 
     // 7. מחיקת משתמש מהמערכת לצמיתות
     @DeleteMapping("/users/{userId}")

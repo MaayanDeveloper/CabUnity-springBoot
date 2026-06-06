@@ -1,8 +1,10 @@
 package com.example.cabunity.service;
 
+import com.example.cabunity.entities.Driver;
 import com.example.cabunity.entities.Ride;
 import com.example.cabunity.entities.RideGroup;
 import com.example.cabunity.entities.User;
+import com.example.cabunity.repositories.RideGroupRep;
 import com.example.cabunity.repositories.RideRep;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +17,7 @@ import java.util.List;
 public class RideSer {
     private final RideRep rideRepository;
     private final UserSer userSer;
+    private final RideGroupRep rideGroupRepository;
 
     @Transactional
     public Ride createRide(Ride ride, Long passengerId) {
@@ -43,19 +46,6 @@ public class RideSer {
         // (ודאי שתוסיפי את findByPassengerId ב-RideRep שלך)
     }
 
-    //עדכון סטטוס הנסיעה (כשהנהג אוסף את הנוסע ל-ACTIVE או מגיע ליעד ל-COMPLETED)
-    @Transactional
-    public Ride updateRideStatus(Long rideId, Ride.RideStatus newStatus) {
-        // שולפים את הנסיעה מה-DB
-        Ride ride = getRideById(rideId);
-
-        // מעדכנים את הסטטוס החדש שקיבלנו מהנהג
-        ride.setStatus(newStatus);
-
-        // לא נוגעים כאן במקומות ישיבה! המקום כבר שוריין מראש בשלב השידוך (האלגוריתם)
-        return rideRepository.save(ride);
-    }
-
     @Transactional
     public Ride cancelRide(Long rideId) {
         // שולפים את הנסיעה מה-DB
@@ -65,7 +55,44 @@ public class RideSer {
         ride.setStatus(Ride.RideStatus.CANCELLED);
         if (ride.getRideGroup() != null) {
             RideGroup group = ride.getRideGroup();
-            group.setAvailableSeats(group.getAvailableSeats() + 1);
+            group.setAvailableSeats(group.getAvailableSeats() + ride.getRequestedSeats());
+            rideGroupRepository.save(group);
+        }
+        return rideRepository.save(ride);
+    }
+    //מעדכנת את סטטוס הנסיעה
+    @Transactional
+    public Ride updateRideStatus(Long rideId, Ride.RideStatus status) {
+        Ride ride = rideRepository.findById(rideId)
+                .orElseThrow(() ->
+                        new RuntimeException("Ride not found"));
+        ride.setStatus(status);
+        if (status == Ride.RideStatus.COMPLETED) {
+            RideGroup group = ride.getRideGroup();
+            if (group != null) {
+                if (!ride.isShared()) {
+                    Driver driver = group.getDriver();
+                    group.setAvailableSeats(
+                            driver.getMaxSeats() - 1
+                    );
+                } else {
+                    group.setAvailableSeats(
+                            group.getAvailableSeats()
+                                    + ride.getRequestedSeats()
+                    );
+                }
+                boolean hasActiveRides =
+                        group.getRides().stream()
+                                .filter(r -> !r.getId().equals(ride.getId()))
+                                .anyMatch(r ->
+                                        r.getStatus() == Ride.RideStatus.PENDING
+                                                || r.getStatus() == Ride.RideStatus.ACTIVE
+                                );
+                if (!hasActiveRides) {
+                    group.setStatus(RideGroup.RideGroupStatus.PENDING);
+                }
+                rideGroupRepository.save(group);
+            }
         }
         return rideRepository.save(ride);
     }
