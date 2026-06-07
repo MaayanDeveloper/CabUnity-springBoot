@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Car, User, Smartphone, CreditCard, Mail, ArrowRight } from "lucide-react"
+import { Car, CreditCard, ArrowRight } from "lucide-react"
 import api from "@/lib/api"
 
 export default function BecomeDriver() {
   const router = useRouter()
+  const [userId, setUserId] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     carModel: "",
     plateNumber: "",
@@ -14,8 +15,24 @@ export default function BecomeDriver() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState("")
 
+  // שליפת ה-ID האמיתי של המשתמש שנרשם או התחבר בשלב הקודם
+  useEffect(() => {
+    const savedId = localStorage.getItem("userId")
+    if (!savedId) {
+      setMessage("⚠️ שים לב: לא נמצא משתמש מחובר. אנא הרשם קודם במערכת.")
+    } else {
+      setUserId(savedId)
+    }
+  }, [])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!userId) {
+      setMessage("❌ שגיאה: מזהה משתמש חסר. לא ניתן להשלים את הרישום כנהג.")
+      return
+    }
+
     setLoading(true)
     setMessage("")
 
@@ -31,13 +48,18 @@ export default function BecomeDriver() {
     }
 
     try {
-      // שליחת הבקשה לקונטרולר של מעיין עבור משתמש מספר 1
-      await api.post("/driver/register/1", driverData)      
+      // שליחת הבקשה עם ה-ID הדינמי והאמיתי של המשתמש שנרשם הרגע!
+      await api.post(`/driver/register/${userId}`, driverData)      
       setMessage("🎉 בקשתך נשלחה בהצלחה! המתן לאישור המנהל.")
       setFormData({ carModel: "", plateNumber: "" })
+      
+      // מעבר אוטומטי לפאנל הניהול לאחר 2 שניות לצורך בדיקה והצגה
+      setTimeout(() => {
+        router.push("/admin")
+      }, 2000)
     } catch (error) {
       console.error("Registration error:", error)
-      setMessage("❌ ההרשמה נכשלה. ודאי שמשתמש מספר 1 קיים ב-DB או שהסרבר דולק.")
+      setMessage("❌ ההרשמה כנהג נכשלה. ודאי שהסרבר דולק והנתונים תקינים.")
     } finally {
       setLoading(false)
     }
@@ -58,7 +80,8 @@ export default function BecomeDriver() {
 
         {message && (
           <div className={`p-4 rounded-xl mb-4 text-center text-sm border ${
-            message.includes("🎉") ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-red-50 border-red-200 text-red-800"
+            message.includes("🎉") ? "bg-emerald-50 border-emerald-200 text-emerald-800" :
+            message.includes("⚠️") ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-red-50 border-red-200 text-red-800"
           }`}>
             {message}
           </div>
@@ -99,7 +122,7 @@ export default function BecomeDriver() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !userId}
             className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold rounded-xl text-sm shadow-md transition-all mt-2"
           >
             {loading ? "שולח בקשה..." : "הגש בקשת הצטרפות"}
@@ -111,7 +134,7 @@ export default function BecomeDriver() {
           className="w-full mt-4 flex items-center justify-center gap-1 text-xs text-gray-500 hover:text-gray-800 transition-colors"
         >
           <ArrowRight className="w-3 h-3" />
-          חזרה לפאנל מנהל לשם בדיקה
+          חזרה לפאנל מנהל
         </button>
 
       </div>
