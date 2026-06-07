@@ -96,4 +96,35 @@ public class RideSer {
         }
         return rideRepository.save(ride);
     }
+
+    @Transactional
+    public Ride completeRide(Long rideId) {
+
+        Ride ride = rideRepository.findById(rideId)
+                .orElseThrow(() -> new RuntimeException("Ride not found"));
+
+        if (ride.getStatus() == Ride.RideStatus.COMPLETED) {
+            throw new RuntimeException("Ride already completed");
+        }
+
+        RideGroup group = ride.getRideGroup();
+
+        ride.setStatus(Ride.RideStatus.COMPLETED);
+
+        // אם זה נסיעה בקבוצה
+        if (group != null) {
+
+            group.setAvailableSeats(group.getAvailableSeats() + ride.getRequestedSeats());
+
+            // אם אין יותר נסיעות פעילות → לסגור קבוצה
+            boolean anyActiveRides = group.getRides().stream()
+                    .anyMatch(r -> r.getStatus() != Ride.RideStatus.COMPLETED);
+
+            if (!anyActiveRides) {
+                group.setStatus(RideGroup.RideGroupStatus.COMPLETED);
+            }
+        }
+
+        return rideRepository.save(ride);
+    }
 }

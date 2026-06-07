@@ -29,15 +29,20 @@ public class RideGroupSer {
 
     // הגדרת הדפדפן הוירטואלי של השרת
     private final RestClient restClient = RestClient.create();
-    private final double MaxOriginMinutes = 15.0;
-    private final double MaxDestMinute = 15.0;
+    private final double MaxOriginMinutes = 999;
+    private final double MaxDestMinute = 999;
 
     //מקבלת שני מיקומים- הנהג והמזמין- ומוצאת מה המרחק בינהם
-    public double getDriveMinutes( double lon1D ,double lat1D,  double lon2U ,double lat2U) {
+    public double getDriveMinutes(
+            double originLng,
+            double originLat,
+            double destLng,
+            double destLat
+    ) {
         try {
             String url = String.format(
                     "http://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?overview=false",
-                    lon1D, lat1D, lon2U, lat2U
+                    originLng, originLat, destLng, destLat
             );
 
             String response = restClient.get()
@@ -50,7 +55,9 @@ public class RideGroupSer {
 
             java.util.List<?> routes = (java.util.List<?>) jsonMap.get("routes");
             java.util.Map<?, ?> firstRoute = (java.util.Map<?, ?>) routes.get(0);
-            double durationInSeconds = Double.parseDouble(firstRoute.get("duration").toString());
+
+            double durationInSeconds =
+                    Double.parseDouble(firstRoute.get("duration").toString());
 
             return durationInSeconds / 60.0;
 
@@ -125,76 +132,86 @@ public class RideGroupSer {
     }
 
     @Transactional
-    public void matchRideToBestGroup(Long rideId) {
+    public RideGroup  matchRideToBestGroup(Long rideId) {
+
+        System.out.println("===== MATCH START =====");
+
         Ride newRide = rideRepository.findById(rideId)
                 .orElseThrow(() -> new RuntimeException("Ride not found"));
+
         int seatsNeeded = newRide.getRequestedSeats();
+
         List<RideGroup> availableGroups = getAvailableGroupsForAlgorithm();
+
         RideGroup bestGroup = null;
         double minEtaMinutes = Double.MAX_VALUE;
+
         for (RideGroup group : availableGroups) {
-            System.out.println("GROUP: " + group.getId());
-            System.out.println("SEATS: " + group.getAvailableSeats());
-            System.out.println("DRIVER AVAILABLE: " + group.getDriver().getAvailable());
+
             List<Ride> rides =
-                    group.getRides() == null
-                            ? List.of()
-                            : group.getRides();
-            if (group.getAvailableSeats() < seatsNeeded) {
-                continue;
-            }
-            // נוסע רוצה נסיעה פרטית
-            if (!newRide.isShared() && !rides.isEmpty()) {
-                continue;
-            }
-            // כבר יש ברכב נוסע שביקש נסיעה פרטית
-            if (!rides.isEmpty() && !rides.get(0).isShared()) {
-                continue;
-            }
+                    (group.getRides() == null) ? List.of() : group.getRides();
+
+            // ❌ לא מספיק מושבים
+            if (group.getAvailableSeats() < seatsNeeded) continue;
+
+            // ❌ נסיעה פרטית לא יכולה להצטרף לקבוצה קיימת
+            if (!newRide.isShared() && !rides.isEmpty()) continue;
+
+            // ❌ כבר יש פרטית בקבוצה
+            if (!rides.isEmpty() && !rides.get(0).isShared()) continue;
+
+            // ❌ בדיקת יעד מול נוסע ראשון
             if (!rides.isEmpty()) {
+
                 Ride firstPassenger = rides.get(0);
+
                 double destDiff = getDriveMinutes(
-                        firstPassenger.getDestLat(),
                         firstPassenger.getDestLng(),
-                        newRide.getDestLat(),
-                        newRide.getDestLng()
+                        firstPassenger.getDestLat(),
+                        newRide.getDestLng(),
+                        newRide.getDestLat()
                 );
-                if (destDiff > MaxDestMinute) {
-                    continue;
-                }
+
+                if (destDiff > MaxDestMinute) continue;
             }
+
+            // 🎯 ETA מהנהג לנקודת איסוף
             double currentEta = getDriveMinutes(
-                    group.getDriver().getCurrentLat(),
                     group.getDriver().getCurrentLng(),
-                    newRide.getOriginLat(),
-                    newRide.getOriginLng()
+                    group.getDriver().getCurrentLat(),
+                    newRide.getOriginLng(),
+                    newRide.getOriginLat()
             );
+
             if (currentEta < minEtaMinutes) {
                 minEtaMinutes = currentEta;
                 bestGroup = group;
             }
         }
-        if (bestGroup != null) {
-            newRide.setRideGroup(bestGroup);
-            bestGroup.setStatus(RideGroup.RideGroupStatus.ACTIVE);
-            rideRepository.save(newRide);
-            if (!newRide.isShared()) {
-                bestGroup.setAvailableSeats(0);
-            } else {
-                int remainingSeats =
-                        bestGroup.getAvailableSeats() - seatsNeeded;
-                bestGroup.setAvailableSeats(remainingSeats);
-            }
-            rideGroupRepository.save(bestGroup);
-            System.out.println(
-                    "Matched successfully! Remaining seats in taxi: "
-                            + bestGroup.getAvailableSeats()
-            );
+
+        // ===== RESULT =====
+
+        if (bestGroup == null) {
+            throw new RuntimeException("No available drivers with enough seats for your request.");
+        }
+
+        newRide.setRideGroup(bestGroup);
+        bestGroup.setStatus(RideGroup.RideGroupStatus.ACTIVE);
+
+        rideRepository.save(newRide);
+
+        if (!newRide.isShared()) {
+            bestGroup.setAvailableSeats(0);
         } else {
-            throw new RuntimeException(
-                    "No available drivers with enough seats for your request."
+            bestGroup.setAvailableSeats(
+                    bestGroup.getAvailableSeats() - seatsNeeded
             );
         }
+
+        rideGroupRepository.save(bestGroup);
+
+        System.out.println("MATCH SUCCESS DONE");
+        return bestGroup;
     }
     @Transactional
     public RideGroup endShift(Long groupId) {

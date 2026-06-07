@@ -2,6 +2,7 @@ package com.example.cabunity.controller;
 
 import com.example.cabunity.dto.CreateRideRequest;
 import com.example.cabunity.entities.Ride;
+import com.example.cabunity.entities.RideGroup;
 import com.example.cabunity.entities.User;
 import com.example.cabunity.service.RideGroupSer;
 import com.example.cabunity.service.RideSer;
@@ -63,9 +64,12 @@ public class PassengerClr {
     @PostMapping("/rides/{rideId}/match")
     public ResponseEntity<Map<String, String>> matchRideToGroup(@PathVariable Long rideId) {
         try {
-            rideGroupSer.matchRideToBestGroup(rideId);
+            RideGroup matchedGroup =
+                    rideGroupSer.matchRideToBestGroup(rideId);
             return ResponseEntity.ok(Map.of(
-                    "message", "Passenger matched successfully to the best available driver!"
+                    "message", "Passenger matched successfully to the best available driver!",
+                    "rideGroupId", String.valueOf(matchedGroup.getId()),
+                    "driverId", String.valueOf(matchedGroup.getDriver().getId())
             ));
         } catch (RuntimeException ex) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -114,5 +118,14 @@ public class PassengerClr {
         Ride createdRide = rideSer.createRide(ride, passengerId);
 
         return ResponseEntity.ok(createdRide);
+    }
+
+    @PostMapping("/rides/{rideId}/complete")
+    public ResponseEntity<?> completeRide(@PathVariable Long rideId) {
+        rideSer.completeRide(rideId);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Ride completed successfully"
+        ));
     }
 }
