@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import RideBooking from "@/components/ride/ride-booking"
-import api from "@/lib/api"
+import axios from "axios"
 
 export default function Page() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -25,14 +25,20 @@ export default function Page() {
     setLoading(true)
 
     try {
-      // קריאה אמיתית לקונטרולר שעדכנו ב-Spring Boot!
-      const response = await api.post("/passenger/login", { email, password })
+      // פנייה ישירה לקונטרולר החדש שהוספנו ב-Spring Boot
+      const response = await axios.post("http://localhost:8080/api/passenger/login", { 
+        email, 
+        password 
+      })
       
       const { token, user } = response.data
       
-      // שמירת ה-JWT ופרטי המשתמש בדפדפן
+      // שמירת ה-Token ופרטי המשתמש בדפדפן (בול לפי הדרישות!)
       localStorage.setItem("token", token)
       localStorage.setItem("user", JSON.stringify(user))
+      
+      // עדכון ה-ID של הדמו שישמש את שאר הקומפוננטות באופן דינמי
+      localStorage.setItem("passengerId", user.id)
       
       setIsAuthenticated(true)
     } catch (err: any) {
