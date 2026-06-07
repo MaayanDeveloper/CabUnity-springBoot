@@ -1,15 +1,18 @@
 package com.example.cabunity.controller;
 
+import com.example.cabunity.dto.CreateRideRequest;
 import com.example.cabunity.entities.Ride;
 import com.example.cabunity.entities.User;
 import com.example.cabunity.service.RideGroupSer;
 import com.example.cabunity.service.RideSer;
 import com.example.cabunity.service.UserSer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
+import org.springframework.beans.factory.annotation.Autowired;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/passenger")
@@ -27,26 +30,47 @@ public class PassengerClr {
         return ResponseEntity.ok(created);
     }
 
-    // 2. עדכון פרטי הפרופיל של הנוסע
-    @PutMapping("/{id}/update")
-    public ResponseEntity<User> updatePassenger(@PathVariable Long id, @RequestBody User userDetails) {
-        User updated = userSer.updateUser(id, userDetails);
-        return ResponseEntity.ok(updated);
-    }
-    // 3. יצירת הזמנת נסיעה חדשה (בסטטוס PENDING)
-    @PostMapping("/{passengerId}/rides")
-    public ResponseEntity<Ride> createRide(@RequestBody Ride ride, @PathVariable Long passengerId) {
-        System.out.println("ENTERED CREATE RIDE");
-        System.out.println(ride);
-        Ride createdRide = rideSer.createRide(ride, passengerId);
-        return ResponseEntity.ok(createdRide);
-    }
+    // 1.ב. התחברות נוסע/משתמש למערכת והנפקת טוקן אמיתי
+    @Autowired
+    private com.example.cabunity.service.JwtService jwtService;
 
+    @PostMapping("/login")
+    public ResponseEntity<?> loginPassenger(@RequestBody com.example.cabunity.dto.LoginRequest loginRequest) {
+        // 1. חיפוש המשתמש לפי האימייל שלו
+        User user = userSer.getAllUsers().stream()
+                .filter(u -> u.getEmail().equalsIgnoreCase(loginRequest.getEmail()))
+                .findFirst()
+                .orElse(null);
+
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("האימייל לא נמצא במערכת");
+        }
+
+        // 2. בדיקת סיסמה ישירה מול הנתונים בדאטאבייס
+        if (!user.getPassword().equals(loginRequest.getPassword())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("אימייל או סיסמה שגויים, נסו שוב.");
+        }
+
+        // 3. יצירת JWT Token אמיתי, חתום ורשמי - מעבירים את אובייקט ה-User המלא!
+        String token = jwtService.generateToken(user);
+
+        // 4. החזרת התשובה הרשמית עם ה-JWT לפרונט
+        return ResponseEntity.ok(new com.example.cabunity.dto.LoginResponse(token, user));
+    }
     // 4. הפעלת מנוע השידוך החכם! (האלגוריתם שכתבנו יחד)
     @PostMapping("/rides/{rideId}/match")
-    public ResponseEntity<String> matchRideToGroup(@PathVariable Long rideId) {
-        rideGroupSer.matchRideToBestGroup(rideId);
-        return ResponseEntity.ok("Passenger matched successfully to the best available driver!");
+    public ResponseEntity<Map<String, String>> matchRideToGroup(@PathVariable Long rideId) {
+        try {
+            rideGroupSer.matchRideToBestGroup(rideId);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Passenger matched successfully to the best available driver!"
+            ));
+        } catch (RuntimeException ex) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", ex.getMessage()));
+        }
     }
 
     // 5. צפייה בהיסטוריית הנסיעות של הנוסע הספציפי ("הנסיעות שלי" בריאקט)
@@ -68,5 +92,27 @@ public class PassengerClr {
     public ResponseEntity<Ride> getRideDetails(@PathVariable Long rideId) {
         Ride ride = rideSer.getRideById(rideId);
         return ResponseEntity.ok(ride);
+    }
+
+    @PostMapping("/{passengerId}/rides")
+    public ResponseEntity<Ride> createRide(
+            @PathVariable Long passengerId,
+            @RequestBody CreateRideRequest request
+    ) {
+
+        Ride ride = Ride.builder()
+                .originAddress(request.getOriginAddress())
+                .destinationAddress(request.getDestinationAddress())
+                .originLat(request.getOriginLat())
+                .originLng(request.getOriginLng())
+                .destLat(request.getDestLat())
+                .destLng(request.getDestLng())
+                .requestedSeats(request.getRequestedSeats())
+                .isShared(request.isShared())
+                .build();
+
+        Ride createdRide = rideSer.createRide(ride, passengerId);
+
+        return ResponseEntity.ok(createdRide);
     }
 }

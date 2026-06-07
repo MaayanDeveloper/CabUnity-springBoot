@@ -3,7 +3,14 @@
 import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { MapPin, Navigation, Clock, Users, CreditCard, Star, Phone, MessageCircle, X, Plus, Minus, Trash2, Search, Car, Sparkles, AlertCircle } from "lucide-react"
-import apiClient from "@/lib/api" // משתמשים בשםApiClient כדי למנוע התנגשויות מילים
+import {
+  createRide,
+  matchRide,
+  getRideDetails,
+  cancelRide,
+  mapApiDriverToUi,
+  type UiDriver,
+} from "@/lib/api/passenger"
 
 const LeafletMap = dynamic(() => import("@/components/map/leaflet-map"), {
   ssr: false,
@@ -25,19 +32,7 @@ interface Location {
 
 type RideStatus = "idle" | "searching" | "found" | "arriving" | "in_ride" | "completed"
 
-interface Driver {
-  id: string
-  name: string
-  rating: number
-  trips: number
-  carModel: string
-  carColor: string
-  plateNumber: string
-  photo: string
-  seats: number
-  distanceKm: number
-  eta: number
-}
+type Driver = UiDriver
 
 const RIDE_TYPES = [
   { id: "shared", name: "משותפת", icon: Users, multiplier: 0.6, description: "חסכו עד 40%", color: "text-emerald-500" },
@@ -60,6 +55,7 @@ export default function RideBooking() {
   const [estimatedTime, setEstimatedTime] = useState<number | null>(null)
   const [searchInputs, setSearchInputs] = useState<string[]>(["", ""])
   const [bookingError, setBookingError] = useState<string | null>(null)
+  const [currentRideId, setCurrentRideId] = useState<number | null>(null)
 
   const validLocations = locations.filter(l => l.lat && l.lng)
 
@@ -158,80 +154,92 @@ export default function RideBooking() {
   const handleBookRide = async () => {
     if (validLocations.length < 2) return
 
+    const passengerId = Number(process.env.NEXT_PUBLIC_DEMO_PASSENGER_ID)
+    if (!passengerId) {
+      setBookingError("חסר NEXT_PUBLIC_DEMO_PASSENGER_ID ב-.env.local")
+      return
+    }
+
     setBookingError(null)
     setStatus("searching")
 
-    const savedUserStr = localStorage.getItem("user")
-    if (!savedUserStr) {
-      setBookingError("משתמש לא מחובר, נא לבצע התחברות מחדש.")
-      setStatus("idle")
-      return
-    }
-    const currentUser = JSON.parse(savedUserStr)
     const pickup = validLocations[0]
     const destination = validLocations[validLocations.length - 1]
+    const isShared = selectedRideType === "shared"
+    let createdRideId: number | null = null
 
     try {
-      const ridePayload = {
-        originAddress: pickup.address || "נקודת מוצא",
-        destinationAddress: destination.address || "נקודת יעד",
+      const createdRide = await createRide(passengerId, {
+        originAddress: pickup.address ?? "נקודת איסוף",
+        destinationAddress: destination.address ?? "יעד",
         originLat: pickup.lat,
         originLng: pickup.lng,
         destLat: destination.lat,
         destLng: destination.lng,
         requestedSeats: passengers,
-        isShared: selectedRideType === "shared"
-      }
+        isShared,
+      })
 
-      // קריאות מול ה-Spring Boot המאובטח באמצעות apiClient החדש
-      const createResponse = await apiClient.post(`/passenger/${currentUser.id}/rides`, ridePayload)
-      const generatedRide = createResponse.data
+      createdRideId = createdRide.id
+      setCurrentRideId(createdRide.id)
 
-      await apiClient.post(`/passenger/rides/${generatedRide.id}/match`)
+      await matchRide(createdRide.id)
 
-      const detailsResponse = await apiClient.get(`/passenger/rides/${generatedRide.id}`)
-      const updatedRide = detailsResponse.data
+      const rideDetails = await getRideDetails(createdRide.id)
 
-      if (updatedRide && updatedRide.rideGroup && updatedRide.rideGroup.driver) {
-        const dbDriver = updatedRide.rideGroup.driver
-        
-        setDriver({
-          id: dbDriver.id.toString(),
-          name: dbDriver.user?.name || "נהג קאב-יוניטי",
-          rating: dbDriver.user?.rating || 5.0,
-          trips: 42,
-          carModel: dbDriver.carModel,
-          carColor: "לבן",
-          plateNumber: dbDriver.licensePlate,
-          photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=256&h=256",
-          seats: dbDriver.maxSeats,
-          distanceKm: parseFloat(dbDriver.distanceToPassenger?.toFixed(1)) || 1.2,
-          eta: Math.ceil(dbDriver.distanceToPassenger * 2) || 4
-        })
-
-        setDriverLocation({
-          lat: dbDriver.currentLat,
-          lng: dbDriver.currentLng
-        })
-
-        setStatus("found")
-        setTimeout(() => setStatus("arriving"), 2500)
-      } else {
-        setBookingError("הנסיעה נוצרה, אך לא נמצא נהג פנוי התואם למסלול שלך כרגע.")
+      const apiDriver = rideDetails.rideGroup?.driver
+      if (!apiDriver) {
+        setBookingError(
+          "הנסיעה שודכה אבל פרטי הנהג לא הגיעו מהשרת. בדקי את @JsonBackReference ב-Ride.java"
+        )
         setStatus("idle")
+        return
       }
 
-    } catch (error: any) {
+      const foundDriver = mapApiDriverToUi(apiDriver, pickup.lat, pickup.lng)
+      setDriver(foundDriver)
+
+      setDriverLocation({
+        lat: apiDriver.currentLat,
+        lng: apiDriver.currentLng,
+      })
+
+      if (rideDetails.price) {
+        setEstimatedPrice(Math.round(rideDetails.price))
+      }
+
+      setStatus("found")
+      setTimeout(() => setStatus("arriving"), 2500)
+    } catch (error) {
       console.error("Error booking ride:", error)
-      setBookingError(error.response?.data?.message || "לא נמצאה קבוצת נסיעה שיתופית זמינה כרגע עם מספיק מקום פנוי.")
+      if (createdRideId) {
+        try {
+          await cancelRide(createdRideId)
+        } catch {
+          // ignore cancel errors
+        }
+      }
+      const message =
+        error instanceof Error ? error.message : "אירעה שגיאה בחיפוש נהג"
+      setBookingError(message)
       setStatus("idle")
+      setCurrentRideId(null)
     }
   }
 
-  const handleCancelRide = () => {
+  const handleCancelRide = async () => {
+    if (currentRideId) {
+      try {
+        await cancelRide(currentRideId)
+      } catch (error) {
+        console.error("Error cancelling ride:", error)
+      }
+    }
     setStatus("idle")
     setDriver(null)
     setDriverLocation(null)
+    setCurrentRideId(null)
+    setBookingError(null)
   }
 
   const searchAddress = async (query: string, index: number) => {
@@ -260,6 +268,7 @@ export default function RideBooking() {
     setStatus("idle")
     setDriver(null)
     setDriverLocation(null)
+    setCurrentRideId(null)
     setBookingError(null)
     setLocations([
       { lat: 0, lng: 0, address: "" },
@@ -568,9 +577,6 @@ export default function RideBooking() {
               </div>
 
               <div className="space-y-2">
-                <div className="p-2 text-xs text-muted-foreground text-center bg-gray-50 rounded-lg">
-                  🚕 מסלול נסיעה פעיל מול שרת ה-Spring Boot
-                </div>
                 {validLocations.map((loc, i) => (
                   <div key={i} className="flex items-center gap-3 p-3 bg-muted rounded-xl">
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold ${

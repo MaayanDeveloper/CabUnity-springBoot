@@ -27,4 +27,6 @@ public interface UserRep extends JpaRepository<User, Long> {
     // שאילתה מותאמת אישית: מוצאת משתמשים עם דירוג גבוה מציון מסוים
     @Query("SELECT u FROM User u WHERE u.rating >= :minRating")
     List<User> findHighRatedUsers(@Param("minRating") double minRating);
+    // חיפוש משתמש לפי אימייל (חובה עבור תהליך הלוגין!)
+    Optional<User> findByEmail(String email);
 }

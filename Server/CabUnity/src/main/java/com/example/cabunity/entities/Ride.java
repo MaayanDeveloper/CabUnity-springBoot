@@ -1,6 +1,7 @@
     package com.example.cabunity.entities;
 
-    import com.fasterxml.jackson.annotation.JsonBackReference;
+    import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+    import com.fasterxml.jackson.annotation.JsonProperty;
     import jakarta.persistence.*;
     import lombok.*;
 
@@ -11,6 +12,7 @@
     @ToString
     @EqualsAndHashCode
     @Entity
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public class Ride {
         @Id
         @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -36,11 +38,11 @@
             COMPLETED,
             CANCELLED
         }
+        @JsonProperty("isShared")
         private boolean isShared;
         private double price;
 
         @ManyToOne
         @JoinColumn(name = "ride_group_id")
-        @JsonBackReference
         private RideGroup rideGroup;
     }

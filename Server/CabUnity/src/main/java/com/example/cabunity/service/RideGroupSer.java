@@ -1,13 +1,18 @@
 package com.example.cabunity.service;
 
+import com.example.cabunity.dto.CreateRideRequest;
 import com.example.cabunity.entities.Driver;
 import com.example.cabunity.entities.Ride;
 import com.example.cabunity.entities.RideGroup;
 import com.example.cabunity.repositories.RideGroupRep;
 import com.example.cabunity.repositories.RideRep;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.client.RestClient;
 
 import java.time.LocalDateTime;
@@ -95,14 +100,28 @@ public class RideGroupSer {
         return rideGroupRepository.save(group);
     }
 
-    //מביאה את כל המוניות שיש בהן לפחות מקום אחד פנוי
+    // מביאה את כל המוניות שיש בהן לפחות מקום אחד פנוי
     public List<RideGroup> getAvailableGroupsForAlgorithm() {
-        return rideGroupRepository.findAll().stream()
-                .filter(g -> (g.getStatus() == RideGroup.RideGroupStatus.PENDING ||
-                        g.getStatus() == RideGroup.RideGroupStatus.ACTIVE))
+        List<RideGroup> allGroups = rideGroupRepository.findAll();
+        System.out.println("ALL GROUPS FROM DB: " + allGroups.size());
+        List<RideGroup> filtered = allGroups.stream()
+
+                .peek(g -> System.out.println(
+                        "CHECK GROUP ID=" + g.getId() +
+                                " STATUS=" + g.getStatus() +
+                                " SEATS=" + g.getAvailableSeats() +
+                                " DRIVER_AVAILABLE=" + (g.getDriver() != null ? g.getDriver().getAvailable() : "NULL")
+                ))
+                .filter(g ->
+                        g.getStatus() == RideGroup.RideGroupStatus.PENDING
+                                || g.getStatus() == RideGroup.RideGroupStatus.ACTIVE
+                )
                 .filter(g -> g.getAvailableSeats() > 0)
-                .filter(g -> Boolean.TRUE.equals(g.getDriver().getAvailable()))
+                .filter(g -> g.getDriver() != null
+                        && Boolean.TRUE.equals(g.getDriver().getAvailable()))
                 .toList();
+        System.out.println("AFTER FILTER GROUPS: " + filtered.size());
+        return filtered;
     }
 
     @Transactional
@@ -114,6 +133,9 @@ public class RideGroupSer {
         RideGroup bestGroup = null;
         double minEtaMinutes = Double.MAX_VALUE;
         for (RideGroup group : availableGroups) {
+            System.out.println("GROUP: " + group.getId());
+            System.out.println("SEATS: " + group.getAvailableSeats());
+            System.out.println("DRIVER AVAILABLE: " + group.getDriver().getAvailable());
             List<Ride> rides =
                     group.getRides() == null
                             ? List.of()
@@ -184,4 +206,6 @@ public class RideGroupSer {
         group.setStatus(RideGroup.RideGroupStatus.COMPLETED);
         return rideGroupRepository.save(group);
     }
+
+
     }
